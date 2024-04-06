@@ -38,6 +38,12 @@
 
 //-------Begin hardware definition block---------------------------------------
 
+#define SWITCHER1 10
+#define SWITCHER2 11
+#define SWITCHER3 12
+int buttonState1 = 0;
+int buttonState2 = 0;
+int buttonState3 = 0;
 //---------------------OLED----------------------------------------------------
 //#define I2C_ADDRESS 0x3C
 //SSD1306AsciiWire oled;
@@ -77,13 +83,14 @@ const int wSine     = 0b0000000000000000;
 int waveType = wSine;
 
 
-
 int SG_iSweep,SG_nSweep;
 
 
 const int SG_fsyncPin = 7;
 const int SG_CLK = 8;
 const int SG_DATA = 9;
+
+long lOutFrequency = 0;
 //-------End hardware defenition block--------------------------------------------------
 
 
@@ -115,6 +122,10 @@ unsigned int g_iFMFreq_old = 1050;
 void setup() {
 
 
+
+ Serial.begin(115200);
+
+
  //Prepare hardware
   Wire.begin();
  // oled.begin(&Adafruit128x64, I2C_ADDRESS);
@@ -131,8 +142,23 @@ void setup() {
   
   //setAD9833frequency(465000);
     InitSigGen();
-    SG_freqSet(465000,wSine);
+    
    
+ Serial.println("Started");
+
+   buttonState1 = digitalRead(SWITCHER1);
+   buttonState2 = digitalRead(SWITCHER2);
+   buttonState3 = digitalRead(SWITCHER3);
+
+  
+  if (buttonState1 == LOW && buttonState2 == HIGH && buttonState3 == HIGH) lOutFrequency = 465000;
+  if (buttonState1 == HIGH && buttonState2 == LOW && buttonState3 == HIGH) lOutFrequency = 460000;
+  if (buttonState1 == HIGH && buttonState2 == HIGH && buttonState3 == LOW) lOutFrequency = 1000000;
+
+  Serial.print("Output Frequency: ");  Serial.println(lOutFrequency);
+    
+  SG_freqSet(lOutFrequency,wSine);
+  
 }
 
 
@@ -142,17 +168,18 @@ void loop() {
 
 
 
-// if (FreqCount.available()) {
-//    g_lFrequency = g_FF*FreqCount.read();
-//    if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq  ) g_lMinFrq = g_lFrequency;
-//    if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq  ) g_lMaxFrq = g_lFrequency;
-//    g_iFMFreq = FM_MIN + (g_lFrequency - g_lMinFrq ) * (float(FM_MAX-FM_MIN)/float(g_lMaxFrq-g_lMinFrq));  //Set FM freq corresponds to circuit frequency
-//    if(g_iFMFreq != g_iFMFreq_old && g_lFrequency >= g_lMinFrq && g_lFrequency <= g_lMaxFrq  ) {  //to prevent parasit switching
-//      setRDA5807frequency(g_iFMFreq);
-//      g_iFMFreq_old = g_iFMFreq;
-//     // g_bUpdated = true;
-//     } 
-//  }
+ if (FreqCount.available()) {
+    g_lFrequency = g_FF*FreqCount.read();
+    if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq  ) g_lMinFrq = g_lFrequency;
+    if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq  ) g_lMaxFrq = g_lFrequency;
+    g_iFMFreq = FM_MIN + (g_lFrequency - g_lMinFrq ) * (float(FM_MAX-FM_MIN)/float(g_lMaxFrq-g_lMinFrq));  //Set FM freq corresponds to circuit frequency
+    if(g_iFMFreq != g_iFMFreq_old && g_lFrequency >= g_lMinFrq && g_lFrequency <= g_lMaxFrq  ) {  //to prevent parasit switching
+      setRDA5807frequency(g_iFMFreq);
+      Serial.println(g_iFMFreq);
+      g_iFMFreq_old = g_iFMFreq;
+     // g_bUpdated = true;
+     } 
+  }
 
 
 
