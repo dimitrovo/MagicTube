@@ -134,8 +134,9 @@ void setup() {
   setRDA5807frequency(1036);
   setRDA5807volume(15); 
 
-
- 
+  pinMode(SWITCHER1,INPUT_PULLUP);
+  pinMode(SWITCHER2,INPUT_PULLUP);
+  pinMode(SWITCHER3,INPUT_PULLUP);
   
   g_lMaxFrq = c_lMinPossibleFrq; //cross-initialize to fill data that are ready to compare operations (see loop)
   g_lMinFrq = c_lMaxPossibleFrq;
