@@ -26,13 +26,10 @@
 
 
 
-//#include <EEPROM.h>
 #include <Wire.h>
 #include <FreqCount.h>
 #include <SPI.h>
-//#include "SSD1306Ascii.h"
-//#include "SSD1306AsciiWire.h"
-//#include "PinChangeInterrupt.h"
+
 
 
 
