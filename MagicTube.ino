@@ -29,6 +29,7 @@
 #include <Wire.h>
 #include <FreqCount.h>
 #include <SPI.h>
+#include <EEPROM.h>
 
 
 
@@ -102,10 +103,10 @@ long lOutFrequency = 0;
 const unsigned long c_MIN_OUT_FREQUENCY = 100000; //Low boundary of oscillator
 
 unsigned long g_lFrequency; // oscillating circuit frequency of tube  receiver
-uint8_t g_FF=4; //frequency factor
+const uint8_t g_FF=4; //frequency factor
 
-unsigned long c_lMinPossibleFrq = 100000; //Max and Min possible generation range to restrict bad frequencies
-unsigned long c_lMaxPossibleFrq = 1200000;
+const unsigned long c_lMinPossibleFrq = 100000; //Max and Min possible generation range to restrict bad frequencies
+const unsigned long c_lMaxPossibleFrq = 1200000;
 
 unsigned long g_lMinFrq = 0; //Current range input frequency to map on FM range
 unsigned long g_lMaxFrq = 0;
@@ -113,7 +114,17 @@ unsigned long g_lMaxFrq = 0;
 unsigned int g_iFMFreq; //FM frequency in Mhz*10
 unsigned int g_iFMFreq_old = 1050;
 
+//Customizations store
+struct TCust{ 
+  unsigned long lMinFreq;
+  unsigned long lMaxFreq;
+} cust, old_cust;
 
+bool bRangeChanged = false;
+const unsigned int cFixRange = 0;
+const unsigned int cDynRange = 1;
+unsigned int bMode = 0;
+bool bModeSaved = false;
 
 
 void setup() {
@@ -123,6 +134,28 @@ void setup() {
  Serial.begin(115200);
 
 
+ //Read and proceed saved customisation
+  EEPROM.get( 0, cust );
+  if(cust.lMinFreq < c_lMinPossibleFrq || cust.lMinFreq > c_lMaxPossibleFrq || cust.lMaxFreq < c_lMinPossibleFrq || cust.lMaxFreq > c_lMaxPossibleFrq){
+     cust.lMinFreq = 0;
+     cust.lMaxFreq = 0;
+  } //checkin read values for trash
+
+  if (cust.lMinFreq ==0 && cust.lMaxFreq == 0) { //no saved range, generate it in process
+   g_lMaxFrq = c_lMinPossibleFrq; //cross-initialize to fill data that are ready to compare operations (see loop)
+   g_lMinFrq = c_lMaxPossibleFrq;
+   bMode = cDynRange;
+  } 
+  else { //range exists, use it
+    g_lMaxFrq = cust.lMaxFreq;
+    g_lMinFrq = cust.lMinFreq;
+    bMode = cFixRange;
+  }
+   old_cust.lMaxFreq =0;
+   old_cust.lMinFreq =0;
+   EEPROM.put(0, old_cust); //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
+   Serial.println("Next start:Dynamics");
+  
  //Prepare hardware
   Wire.begin();
  // oled.begin(&Adafruit128x64, I2C_ADDRESS);
@@ -135,8 +168,7 @@ void setup() {
   pinMode(SWITCHER2,INPUT_PULLUP);
   pinMode(SWITCHER3,INPUT_PULLUP);
   
-  g_lMaxFrq = c_lMinPossibleFrq; //cross-initialize to fill data that are ready to compare operations (see loop)
-  g_lMinFrq = c_lMaxPossibleFrq;
+
   
   //setAD9833frequency(465000);
     InitSigGen();
@@ -148,9 +180,11 @@ void setup() {
    buttonState2 = digitalRead(SWITCHER2);
    buttonState3 = digitalRead(SWITCHER3);
 
-  
+  if (buttonState1 == HIGH && buttonState2 == HIGH && buttonState3 == HIGH) lOutFrequency = 0;
   if (buttonState1 == LOW && buttonState2 == HIGH && buttonState3 == HIGH) lOutFrequency = 465000;
+  if (buttonState1 == LOW && buttonState2 == LOW && buttonState3 == HIGH) lOutFrequency =  455000;
   if (buttonState1 == HIGH && buttonState2 == LOW && buttonState3 == HIGH) lOutFrequency = 460000;
+  if (buttonState1 == HIGH && buttonState2 == LOW && buttonState3 == LOW) lOutFrequency = 470000;
   if (buttonState1 == HIGH && buttonState2 == HIGH && buttonState3 == LOW) lOutFrequency = 1000000;
 
   Serial.print("Output Frequency: ");  Serial.println(lOutFrequency);
@@ -163,57 +197,51 @@ void setup() {
 
 void loop() {
 
+//Serial.println(millis());
+//delay(100);
 
+ //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
+ if(millis() > 3000 && bMode == cFixRange && ! bModeSaved) {
+  EEPROM.put(0, cust); 
+  bModeSaved = true;
+  Serial.println("Next start:Fixed");
+ }
+ 
 
+ 
 
  if (FreqCount.available()) {
     g_lFrequency = g_FF*FreqCount.read();
-    if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq  ) g_lMinFrq = g_lFrequency;
-    if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq  ) g_lMaxFrq = g_lFrequency;
+
+    if (g_lFrequency > c_lMinPossibleFrq &&  g_lFrequency < c_lMaxPossibleFrq ) {  //0607
+    
+    if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq ) { g_lMinFrq = g_lFrequency; bRangeChanged = true; }
+    if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq ) { g_lMaxFrq = g_lFrequency; bRangeChanged = true; }
     g_iFMFreq = FM_MIN + (g_lFrequency - g_lMinFrq ) * (float(FM_MAX-FM_MIN)/float(g_lMaxFrq-g_lMinFrq));  //Set FM freq corresponds to circuit frequency
     if(g_iFMFreq != g_iFMFreq_old && g_lFrequency >= g_lMinFrq && g_lFrequency <= g_lMaxFrq  ) {  //to prevent parasit switching
       setRDA5807frequency(g_iFMFreq);
-      Serial.println(g_iFMFreq);
+  //    Serial.println(g_iFMFreq);
       g_iFMFreq_old = g_iFMFreq;
      // g_bUpdated = true;
      } 
+
+    }  //0607
+    Serial.print(millis()); Serial.print(" m: ");Serial.print(bMode);
+    Serial.print(" fr: ");Serial.print(g_lFrequency);Serial.print(" min:");Serial.print(g_lMinFrq);;Serial.print(" max:");Serial.print(g_lMaxFrq);
+    Serial.print(" iFMF:");Serial.print(g_iFMFreq);Serial.println("=>");
   }
 
-
-
-  
+ //Ranges changes
+ if( bRangeChanged  && bMode == cDynRange ){
+   bRangeChanged = false;  
+   cust.lMinFreq = g_lMinFrq;
+   cust.lMaxFreq = g_lMaxFrq;
+   EEPROM.put(0, cust); 
+ }  
 }
 
 
-//--------------AD9833 hardware functions  --------------------------------
 
-//
-//void writeAD9833(uint16_t Data){
-//  SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV2, MSBFIRST, SPI_MODE2));
-//  digitalWrite(SS, LOW);
-//  delayMicroseconds(1);
-//  SPI.transfer16(Data);
-//  digitalWrite(SS, HIGH);
-//  SPI.endTransaction();
-//}    
-//
-//void setAD9833frequency(unsigned long freq){
-//  unsigned long x = freq * 10.73741824;
-//  int32_t freqWord = x;
-//  int16_t upper = (int16_t)((freqWord & 0xFFFC000) >> 14), 
-//  lower = (int16_t)(freqWord & 0x3FFF);
-//  lower |= 0x4000 ;//FREQ0_WRITE_REG 
-//  upper |= 0x4000 ;//FREQ0_WRITE_REG 
-//  SPI.begin();
-//  writeAD9833(0x2100); 
-//  writeAD9833(lower);
-//  writeAD9833(upper);
-//  writeAD9833(0xC000); 
-//  writeAD9833(0x2000); 
-//  writeAD9833(0x2000); 
-//
-//
-//}
 
 
 //-----------------------------------------------------------------------------
