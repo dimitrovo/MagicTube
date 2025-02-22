@@ -116,6 +116,7 @@ unsigned int g_iFMFreq_old = 1050;
 
 //Customizations store
 struct TCust{ 
+  byte mode;
   unsigned long lMinFreq;
   unsigned long lMaxFreq;
 } cust, old_cust;
@@ -127,34 +128,63 @@ unsigned int bMode = 0;
 bool bModeSaved = false;
 
 
+////Rest constant and variables
+const unsigned long threshold = 5000; // Поріг у 3 секунди
+unsigned long startTime;             // Час запуску Arduino
+//byte mode;                           // Змінна для роботи
+const int ledPin = 13;               // Вбудований LED на Arduino Nano
+bool updated = false; 
+
 void setup() {
 
 
 
  Serial.begin(115200);
-
+ pinMode(ledPin, OUTPUT); // Налаштовуємо LED як вихід
 
  //Read and proceed saved customisation
   EEPROM.get( 0, cust );
-  if(cust.lMinFreq < c_lMinPossibleFrq || cust.lMinFreq > c_lMaxPossibleFrq || cust.lMaxFreq < c_lMinPossibleFrq || cust.lMaxFreq > c_lMaxPossibleFrq){
+  if(cust.lMinFreq < c_lMinPossibleFrq || cust.lMinFreq > c_lMaxPossibleFrq || cust.lMaxFreq < c_lMinPossibleFrq || cust.lMaxFreq > c_lMaxPossibleFrq || ( cust.mode != 0 && cust.mode != 1) ){
      cust.lMinFreq = 0;
      cust.lMaxFreq = 0;
+     cust.mode = cDynRange;
+     bMode = cDynRange;
   } //checkin read values for trash
+  EEPROM.put(0, cust);
 
-  if (cust.lMinFreq ==0 && cust.lMaxFreq == 0) { //no saved range, generate it in process
+  //Serial.print("Mode on startup: ");
+  //Serial.println(cust.mode);
+
+  if (  cust.mode == cDynRange  ) { //no saved range, generate it in process
    g_lMaxFrq = c_lMinPossibleFrq; //cross-initialize to fill data that are ready to compare operations (see loop)
    g_lMinFrq = c_lMaxPossibleFrq;
    bMode = cDynRange;
   } 
-  else { //range exists, use it
+  else { //mode Fix use loaded range
     g_lMaxFrq = cust.lMaxFreq;
     g_lMinFrq = cust.lMinFreq;
     bMode = cFixRange;
   }
-   old_cust.lMaxFreq =0;
-   old_cust.lMinFreq =0;
-   EEPROM.put(0, old_cust); //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
+
+  // Встановлюємо mode = 1 на старті
+  //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
+   cust.mode = cDynRange;
+   EEPROM.put(0, cust);
    Serial.println("Next start:Dynamics");
+
+
+  // Запалюємо LED, якщо mode = 1
+  digitalWrite(ledPin, bMode == cDynRange ? HIGH : LOW);
+
+  // Запам'ятовуємо час початку роботи
+  startTime = millis();
+  
+   //old_cust.lMaxFreq =0;
+   //old_cust.lMinFreq =0;
+   //EEPROM.put(0, old_cust); 
+   
+  
+
   
  //Prepare hardware
   Wire.begin();
@@ -197,36 +227,44 @@ void setup() {
 
 void loop() {
 
-//Serial.println(millis());
-//delay(100);
+////Serial.println(millis());
+////delay(100);
+//
+// //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
+// if(millis() > 3000 && bMode == cFixRange && ! bModeSaved) {
+//  EEPROM.put(0, cust); 
+//  bModeSaved = true;
+//  Serial.println("Next start:Fixed");
+// }
+// 
 
- //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
- if(millis() > 3000 && bMode == cFixRange && ! bModeSaved) {
-  EEPROM.put(0, cust); 
-  bModeSaved = true;
-  Serial.println("Next start:Fixed");
- }
- 
-
- 
+  unsigned long elapsedTime = millis() - startTime;
+ digitalWrite(ledPin, bMode == cDynRange ? HIGH : LOW);
+   // Якщо пристрій пропрацював більше n секунд, оновлюємо mode у EEPROM на 0
+  if (elapsedTime > threshold && !updated) {
+    cust.mode = cFixRange;
+    EEPROM.put(0, cust);
+    updated = true;
+    Serial.println("Device ran for more than 5 seconds. Next Mode set to Fix.");
+  }
 
  if (FreqCount.available()) {
     g_lFrequency = g_FF*FreqCount.read();
 
-    if (g_lFrequency > c_lMinPossibleFrq &&  g_lFrequency < c_lMaxPossibleFrq ) {  //0607
-    
-    if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq ) { g_lMinFrq = g_lFrequency; bRangeChanged = true; }
-    if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq ) { g_lMaxFrq = g_lFrequency; bRangeChanged = true; }
+    if (g_lFrequency > c_lMinPossibleFrq &&  g_lFrequency < c_lMaxPossibleFrq ) {  //only valid value
+    if(bMode == cDynRange) {
+        if (g_lFrequency > c_lMinPossibleFrq && g_lFrequency < g_lMinFrq ) { g_lMinFrq = g_lFrequency; bRangeChanged = true; }
+        if (g_lFrequency < c_lMaxPossibleFrq && g_lFrequency > g_lMaxFrq ) { g_lMaxFrq = g_lFrequency; bRangeChanged = true; }
+    } 
     g_iFMFreq = FM_MIN + (g_lFrequency - g_lMinFrq ) * (float(FM_MAX-FM_MIN)/float(g_lMaxFrq-g_lMinFrq));  //Set FM freq corresponds to circuit frequency
+    
     if(g_iFMFreq != g_iFMFreq_old && g_lFrequency >= g_lMinFrq && g_lFrequency <= g_lMaxFrq  ) {  //to prevent parasit switching
       setRDA5807frequency(g_iFMFreq);
-  //    Serial.println(g_iFMFreq);
       g_iFMFreq_old = g_iFMFreq;
-     // g_bUpdated = true;
      } 
 
     }  //0607
-    Serial.print(millis()); Serial.print(" m: ");Serial.print(bMode);
+    Serial.print(millis()); Serial.print(" mode: ");Serial.print(bMode);
     Serial.print(" fr: ");Serial.print(g_lFrequency);Serial.print(" min:");Serial.print(g_lMinFrq);;Serial.print(" max:");Serial.print(g_lMaxFrq);
     Serial.print(" iFMF:");Serial.print(g_iFMFreq);Serial.println("=>");
   }
