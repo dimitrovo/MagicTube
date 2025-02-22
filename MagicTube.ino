@@ -136,15 +136,17 @@ const int ledPin = 13;               // Вбудований LED на Arduino Na
 bool updated = false; 
 
 void setup() {
+  
 
 
-
- Serial.begin(115200);
+// Serial.begin(115200);
+// Serial.println("Begin Setup");
  pinMode(ledPin, OUTPUT); // Налаштовуємо LED як вихід
 
  //Read and proceed saved customisation
   EEPROM.get( 0, cust );
-  if(cust.lMinFreq < c_lMinPossibleFrq || cust.lMinFreq > c_lMaxPossibleFrq || cust.lMaxFreq < c_lMinPossibleFrq || cust.lMaxFreq > c_lMaxPossibleFrq || ( cust.mode != 0 && cust.mode != 1) ){
+  if(cust.lMinFreq < c_lMinPossibleFrq || cust.lMaxFreq > c_lMaxPossibleFrq ||  cust.mode < 0 || cust.mode > 1 ){
+   //  Serial.println("Can not read configuration");
      cust.lMinFreq = 0;
      cust.lMaxFreq = 0;
      cust.mode = cDynRange;
@@ -170,7 +172,7 @@ void setup() {
   //if we swith off the device less 3 sec, next mode will be DYNAMIC range.
    cust.mode = cDynRange;
    EEPROM.put(0, cust);
-   Serial.println("Next start:Dynamics");
+ //  Serial.println("Next start:Dynamics");
 
 
   // Запалюємо LED, якщо mode = 1
@@ -204,7 +206,7 @@ void setup() {
     InitSigGen();
     
    
- Serial.println("Started");
+ //Serial.println("Started");
 
    buttonState1 = digitalRead(SWITCHER1);
    buttonState2 = digitalRead(SWITCHER2);
@@ -217,7 +219,7 @@ void setup() {
   if (buttonState1 == HIGH && buttonState2 == LOW && buttonState3 == LOW) lOutFrequency = 470000;
   if (buttonState1 == HIGH && buttonState2 == HIGH && buttonState3 == LOW) lOutFrequency = 1000000;
 
-  Serial.print("Output Frequency: ");  Serial.println(lOutFrequency);
+ // Serial.print("Output Frequency: ");  Serial.println(lOutFrequency);
     
   SG_freqSet(lOutFrequency,wSine);
   
@@ -245,7 +247,7 @@ void loop() {
     cust.mode = cFixRange;
     EEPROM.put(0, cust);
     updated = true;
-    Serial.println("Device ran for more than 5 seconds. Next Mode set to Fix.");
+   // Serial.println("Device ran for more than 5 seconds. Next Mode set to Fix.");
   }
 
  if (FreqCount.available()) {
@@ -264,9 +266,9 @@ void loop() {
      } 
 
     }  //0607
-    Serial.print(millis()); Serial.print(" mode: ");Serial.print(bMode);
-    Serial.print(" fr: ");Serial.print(g_lFrequency);Serial.print(" min:");Serial.print(g_lMinFrq);;Serial.print(" max:");Serial.print(g_lMaxFrq);
-    Serial.print(" iFMF:");Serial.print(g_iFMFreq);Serial.println("=>");
+ //   Serial.print(millis()); Serial.print(" mode: ");Serial.print(bMode);
+ //   Serial.print(" fr: ");Serial.print(g_lFrequency);Serial.print(" min:");Serial.print(g_lMinFrq);;Serial.print(" max:");Serial.print(g_lMaxFrq);
+ //   Serial.print(" iFMF:");Serial.print(g_iFMFreq);Serial.println("=>");
   }
 
  //Ranges changes
